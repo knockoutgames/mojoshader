@@ -13,10 +13,15 @@ Summary of Changes
 ** Sample state application
 * Instance draw support
 
+NOTES
+----------------
+* These are just the source files I touched
+** If you want to utilize these changes first start with https://hg.icculus.org/icculus/mojoshader/
+
 TODO
 ----------------
 * Properly map Texture params to Sampler params
-** You currently have to set a texture unit for each Sampler param (different then Direct X)
+** You currently have to set texture units for Sampler param (different then Direct X)
 * Basic render state shadowing to minimize redundant state changes (Pass and Sampler state)
 * Support all Pass and Sampler state possibilities
 * Support assigning default values to all Param types
