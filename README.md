@@ -20,9 +20,9 @@ NOTES
 
 TODO
 ----------------
-* Properly map Texture params to Sampler params
-  * You currently have to set texture units for Sampler param (different then Direct X)
-* Basic render state shadowing to minimize redundant state changes (Pass and Sampler state)
+* Map Texture params to Sampler params
+  * You currently have to set texture units through Sampler params (different then Direct X)
+* Render state shadowing to minimize redundant state changes (Pass and Sampler state)
 * Support all Pass and Sampler state possibilities
 * Support assigning default values to all Param types
 * Clean up changes and match resident coding style better
