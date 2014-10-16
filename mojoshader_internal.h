@@ -68,11 +68,6 @@
 #error glsl120 profile requires glsl profile. Fix your build.
 #endif
 
-// Microsoft's preprocessor has some quirks. In some ways, it doesn't work
-//  like you'd expect a C preprocessor to function.
-#ifndef MATCH_MICROSOFT_PREPROCESSOR
-#define MATCH_MICROSOFT_PREPROCESSOR 1
-#endif
 
 // Other stuff you can disable...
 
@@ -104,8 +99,8 @@ typedef unsigned int uint;  // this is a printf() helper. don't use for code.
 #define va_copy(a, b) a = b
 #define snprintf _snprintf  // !!! FIXME: not a safe replacement!
 #define vsnprintf _vsnprintf  // !!! FIXME: not a safe replacement!
-#define strcasecmp stricmp
-#define strncasecmp strnicmp
+#define strcasecmp _stricmp
+#define strncasecmp _strnicmp
 typedef unsigned __int8 uint8;
 typedef unsigned __int16 uint16;
 typedef unsigned __int32 uint32;
@@ -272,6 +267,9 @@ ssize_t buffer_find(Buffer *buffer, const size_t start,
 #define PRSI_ID 0x49535250  // 0x49535250 == 'PRSI'
 #define CLIT_ID 0x54494C43  // 0x54494C43 == 'CLIT'
 #define FXLC_ID 0x434C5846  // 0x434C5846 == 'FXLC'
+
+// Debug ID
+#define DBUG_ID 0x47554244
 
 // we need to reference these by explicit value occasionally...
 #define OPCODE_RET 28

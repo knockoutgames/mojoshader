@@ -116,6 +116,53 @@ struct MOJOSHADER_glProgram
     GLint ps_bool_loc;
 };
 
+typedef struct
+{ 
+    uint32 vs_index;
+    uint32 ps_index;
+    uint32 program_index;
+    // TODO: state information.
+} MOJOSHADER_glPass;
+
+typedef struct
+{ 
+    uint32 pass_count;
+    MOJOSHADER_glPass *passes;
+} MOJOSHADER_glTechnique;
+
+typedef struct
+{
+    GLvoid *data;
+    uint32 data_size;
+    GLboolean isset;
+
+    uint32 shader_symbol_count;
+    MOJOSHADER_symbol** shader_symbols;
+    MOJOSHADER_symbol** preshader_symbols;
+} glEffectParam;
+
+struct MOJOSHADER_glEffect
+{
+    const MOJOSHADER_effect *effect;
+
+    uint32 shader_count;
+    MOJOSHADER_glShader **shaders;
+
+    uint32 program_count;
+    MOJOSHADER_glProgram **programs;
+
+    uint32 technique_count;
+    MOJOSHADER_glTechnique *techniques;
+
+    uint32 param_count;
+    glEffectParam *param_cache;
+
+	uint32 refcount;
+
+    uint32 bound_technique_index;
+    uint32 bound_pass_index;
+};
+
 #ifndef WINGDIAPI
 #define WINGDIAPI
 #endif
@@ -126,6 +173,7 @@ typedef WINGDIAPI const GLubyte * (APIENTRYP PFNGLGETSTRINGPROC) (GLenum name);
 typedef WINGDIAPI GLenum (APIENTRYP PFNGLGETERRORPROC) (void);
 typedef WINGDIAPI void (APIENTRYP PFNGLENABLEPROC) (GLenum cap);
 typedef WINGDIAPI void (APIENTRYP PFNGLDISABLEPROC) (GLenum cap);
+typedef WINGDIAPI void (APIENTRYP PFNGLBINDTEXTUREPROC) (GLenum target, GLuint texture);
 
 // Max entries for each register file type...
 #define MAX_REG_FILE_F 8192
@@ -174,6 +222,9 @@ struct MOJOSHADER_glContext
     MOJOSHADER_glProgram *bound_program;
     char profile[16];
 
+    // Effect stuff
+    MOJOSHADER_glEffect *bound_effect;
+
     // Extensions...
     int have_core_opengl;
     int have_opengl_2;  // different entry points than ARB extensions.
@@ -191,6 +242,7 @@ struct MOJOSHADER_glContext
     int have_GL_NV_half_float;
     int have_GL_ARB_half_float_vertex;
     int have_GL_OES_vertex_half_float;
+    int have_GL_ARB_instanced_arrays;
 
     // Entry points...
     PFNGLGETSTRINGPROC glGetString;
@@ -199,6 +251,7 @@ struct MOJOSHADER_glContext
     PFNGLGETINTEGERVPROC glGetIntegerv;
     PFNGLENABLEPROC glEnable;
     PFNGLDISABLEPROC glDisable;
+    PFNGLBINDTEXTUREPROC glBindTexture;
     PFNGLDELETESHADERPROC glDeleteShader;
     PFNGLDELETEPROGRAMPROC glDeleteProgram;
     PFNGLATTACHSHADERPROC glAttachShader;
@@ -221,6 +274,9 @@ struct MOJOSHADER_glContext
     PFNGLUNIFORM4IVPROC glUniform4iv;
     PFNGLUSEPROGRAMPROC glUseProgram;
     PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer;
+    PFNGLACTIVETEXTUREPROC glActiveTexture;
+    PFNGLBLENDEQUATIONPROC glBlendEquation;
+    PFNGLBLENDFUNCSEPARATEPROC glBlendFuncSeparate;
     PFNGLDELETEOBJECTARBPROC glDeleteObjectARB;
     PFNGLATTACHOBJECTARBPROC glAttachObjectARB;
     PFNGLCOMPILESHADERARBPROC glCompileShaderARB;
@@ -243,6 +299,7 @@ struct MOJOSHADER_glContext
     PFNGLGETPROGRAMIVARBPROC glGetProgramivARB;
     PFNGLPROGRAMLOCALPARAMETER4FVARBPROC glProgramLocalParameter4fvARB;
     PFNGLPROGRAMLOCALPARAMETERI4IVNVPROC glProgramLocalParameterI4ivNV;
+    PFNGLVERTEXATTRIBDIVISORPROC glVertexAttribDivisorARB;
     PFNGLDELETEPROGRAMSARBPROC glDeleteProgramsARB;
     PFNGLGENPROGRAMSARBPROC glGenProgramsARB;
     PFNGLBINDPROGRAMARBPROC glBindProgramARB;
@@ -932,6 +989,7 @@ static void lookup_entry_points(MOJOSHADER_glGetProcAddress lookup, void *d)
     DO_LOOKUP(core_opengl, PFNGLGETINTEGERVPROC, glGetIntegerv);
     DO_LOOKUP(core_opengl, PFNGLENABLEPROC, glEnable);
     DO_LOOKUP(core_opengl, PFNGLDISABLEPROC, glDisable);
+    DO_LOOKUP(core_opengl, PFNGLBINDTEXTUREPROC, glBindTexture);
     DO_LOOKUP(opengl_3, PFNGLGETSTRINGIPROC, glGetStringi);
     DO_LOOKUP(opengl_2, PFNGLDELETESHADERPROC, glDeleteShader);
     DO_LOOKUP(opengl_2, PFNGLDELETEPROGRAMPROC, glDeleteProgram);
@@ -955,6 +1013,9 @@ static void lookup_entry_points(MOJOSHADER_glGetProcAddress lookup, void *d)
     DO_LOOKUP(opengl_2, PFNGLUNIFORM4IVPROC, glUniform4iv);
     DO_LOOKUP(opengl_2, PFNGLUSEPROGRAMPROC, glUseProgram);
     DO_LOOKUP(opengl_2, PFNGLVERTEXATTRIBPOINTERPROC, glVertexAttribPointer);
+    DO_LOOKUP(opengl_2, PFNGLACTIVETEXTUREPROC, glActiveTexture);
+    DO_LOOKUP(opengl_2, PFNGLBLENDEQUATIONPROC, glBlendEquation);
+    DO_LOOKUP(opengl_2, PFNGLBLENDFUNCSEPARATEPROC, glBlendFuncSeparate);
     DO_LOOKUP(GL_ARB_shader_objects, PFNGLDELETEOBJECTARBPROC, glDeleteObjectARB);
     DO_LOOKUP(GL_ARB_shader_objects, PFNGLATTACHOBJECTARBPROC, glAttachObjectARB);
     DO_LOOKUP(GL_ARB_shader_objects, PFNGLCOMPILESHADERARBPROC, glCompileShaderARB);
@@ -982,6 +1043,7 @@ static void lookup_entry_points(MOJOSHADER_glGetProcAddress lookup, void *d)
     DO_LOOKUP(GL_ARB_vertex_program, PFNGLBINDPROGRAMARBPROC, glBindProgramARB);
     DO_LOOKUP(GL_ARB_vertex_program, PFNGLPROGRAMSTRINGARBPROC, glProgramStringARB);
     DO_LOOKUP(GL_NV_gpu_program4, PFNGLPROGRAMLOCALPARAMETERI4IVNVPROC, glProgramLocalParameterI4ivNV);
+    DO_LOOKUP(GL_ARB_instanced_arrays, PFNGLVERTEXATTRIBDIVISORPROC, glVertexAttribDivisorARB);
 
     #undef DO_LOOKUP
 } // lookup_entry_points
@@ -1095,6 +1157,7 @@ static void load_extensions(MOJOSHADER_glGetProcAddress lookup, void *d)
     ctx->have_GL_NV_half_float = 1;
     ctx->have_GL_ARB_half_float_vertex = 1;
     ctx->have_GL_OES_vertex_half_float = 1;
+    ctx->have_GL_ARB_instanced_arrays = 1;
 
     lookup_entry_points(lookup, d);
 
@@ -1187,6 +1250,7 @@ static void load_extensions(MOJOSHADER_glGetProcAddress lookup, void *d)
     VERIFY_EXT(GL_NV_half_float, -1, -1);
     VERIFY_EXT(GL_ARB_half_float_vertex, 3, 0);
     VERIFY_EXT(GL_OES_vertex_half_float, -1, -1);
+    VERIFY_EXT(GL_ARB_instanced_arrays, 3, 3);
 
     #undef VERIFY_EXT
 
@@ -1571,6 +1635,49 @@ static void program_unref(MOJOSHADER_glProgram *program)
 } // program_unref
 
 
+static void effect_unref(MOJOSHADER_glEffect *effect)
+{
+    if (effect != NULL)
+    {
+        const uint32 refcount = effect->refcount;
+        if (refcount > 1)
+            effect->refcount--;
+        else
+        {
+            uint32 i = 0;
+
+            for (i = 0; i < effect->program_count; i++)
+            {
+                MOJOSHADER_glDeleteProgram(effect->programs[i]);
+            }
+            Free(effect->programs);
+
+            for (i = 0; i < effect->shader_count; i++)
+            {
+                MOJOSHADER_glDeleteShader(effect->shaders[i]);
+            }
+            Free(effect->shaders);
+
+            for (i = 0; i < effect->technique_count; i++)
+            {
+                Free(effect->techniques[i].passes);
+            }
+            Free(effect->techniques);
+
+            for (i = 0; i < effect->param_count; i++)
+            {
+                Free(effect->param_cache[i].data);
+                Free(effect->param_cache[i].shader_symbols);
+                Free(effect->param_cache[i].preshader_symbols);
+            }
+            Free(effect->param_cache);
+            
+            Free(effect);
+        } // else
+    } // if
+} // program_unref
+
+
 static void fill_constant_array(GLfloat *f, const int base, const int size,
                                 const MOJOSHADER_parseData *pd)
 {
@@ -1689,7 +1796,7 @@ static int lookup_uniforms(MOJOSHADER_glProgram *program,
     {
         unsigned int largest = 0;
         const MOJOSHADER_symbol *sym = pd->preshader->symbols;
-        for (i = 0; i < pd->preshader->symbol_count; i++, sym++)
+        for (i = 0; i < (int)pd->preshader->symbol_count; i++, sym++)
         {
             const unsigned int val = sym->register_index + sym->register_count;
             if (val > largest)
@@ -2283,7 +2390,7 @@ void MOJOSHADER_glSetVertexAttribute(MOJOSHADER_usage usage,
                                      int index, unsigned int size,
                                      MOJOSHADER_attributeType type,
                                      int normalized, unsigned int stride,
-                                     const void *ptr)
+                                     const void *ptr, unsigned int diviser)
 {
     if ((ctx->bound_program == NULL) || (ctx->bound_program->vertex == NULL))
         return;
@@ -2315,12 +2422,565 @@ void MOJOSHADER_glSetVertexAttribute(MOJOSHADER_usage usage,
     // this happens to work in both ARB1 and GLSL, but if something alien
     //  shows up, we'll have to split these into profile*() functions.
     ctx->glVertexAttribPointer(gl_index, size, gl_type, norm, stride, ptr);
+    if (ctx->have_GL_ARB_instanced_arrays)
+    {
+        ctx->glVertexAttribDivisorARB(gl_index, diviser);
+    }
 
     // flag this array as in use, so we can enable it later.
     ctx->want_attr[gl_index] = 1;
     if (ctx->max_attrs < (gl_index + 1))
         ctx->max_attrs = gl_index + 1;
 } // MOJOSHADER_glSetVertexAttribute
+
+
+MOJOSHADER_glEffect* MOJOSHADER_glCompileEffect(const unsigned char *tokenbuf,
+                                                 const unsigned int bufsize,
+                                                 const MOJOSHADER_swizzle *swiz,
+                                                 const unsigned int swizcount,
+                                                 const MOJOSHADER_samplerMap *smap,
+                                                 const unsigned int smapcount)
+{
+    MOJOSHADER_glEffect *retval = NULL;
+    GLuint shader = 0;
+    const MOJOSHADER_effect *pd = MOJOSHADER_parseEffect(ctx->profile, tokenbuf,
+                                                         bufsize, swiz, swizcount,
+                                                         smap, smapcount,
+                                                         ctx->malloc_fn,
+                                                         ctx->free_fn,
+                                                         ctx->malloc_data);
+    if (pd->error_count > 0)
+    {
+        // !!! FIXME: put multiple errors in the buffer? Don't use
+        // !!! FIXME:  MOJOSHADER_glGetError() for this?
+        set_error(pd->errors[0].error);
+        goto compile_shader_fail;
+    } // if
+
+    retval = (MOJOSHADER_glEffect *) Malloc(sizeof (MOJOSHADER_glEffect));
+    if (retval == NULL)
+        goto compile_shader_fail;
+
+    // Lets compile all the shaders.
+    {
+        uint32 i = 0;
+
+        retval->shader_count = pd->shader_count;
+        retval->shaders = (MOJOSHADER_glShader **) Malloc(sizeof (MOJOSHADER_glShader*) * retval->shader_count);
+        if (retval->shaders == NULL)
+            goto compile_shader_fail;
+
+        for (i = 0; i < retval->shader_count; i++)
+        {
+            retval->shaders[i] = (MOJOSHADER_glShader *) Malloc(sizeof (MOJOSHADER_glShader) * retval->shader_count);
+            if (retval->shaders[i] == NULL)
+                goto compile_shader_fail;
+
+            if (!ctx->profileCompileShader(pd->shaders[i].shader, &shader))
+                goto compile_shader_fail;
+
+            retval->shaders[i]->parseData = pd->shaders[i].shader;
+            retval->shaders[i]->handle = shader;
+            retval->shaders[i]->refcount = 1;
+        }
+    }
+
+    // Lets link all programs that may get bound.
+    // TODO: may want to defer this until draw to minimize shader mem
+    // TODO: can probably save a bit of mem if we hash shader combos instead of 1:1 program to tech->pass ratio.
+    {
+        uint32 program_count = 0;
+        uint32 tech_index = 0;
+        uint32 pass_index = 0;
+        uint32 shader_index = 0;
+
+        retval->technique_count = pd->technique_count;
+        retval->techniques = (MOJOSHADER_glTechnique *) Malloc(sizeof (MOJOSHADER_glTechnique) * retval->technique_count);
+        if (retval->techniques == NULL)
+            goto compile_shader_fail;
+
+        // Count and alloc memory for techniques and programs
+        for (tech_index = 0; tech_index < retval->technique_count; tech_index++)
+        {
+            program_count += pd->techniques[tech_index].pass_count;
+
+            retval->techniques[tech_index].pass_count = pd->techniques[tech_index].pass_count;
+            retval->techniques[tech_index].passes = (MOJOSHADER_glPass *) Malloc(sizeof (MOJOSHADER_glPass) * retval->techniques[tech_index].pass_count);
+            if (retval->techniques[tech_index].passes == NULL)
+                goto compile_shader_fail;
+
+            memset(retval->techniques[tech_index].passes, '\0', sizeof (MOJOSHADER_glPass) * retval->techniques[tech_index].pass_count);
+        }
+
+        retval->program_count = 0;
+        retval->programs = (MOJOSHADER_glProgram **) Malloc(sizeof (MOJOSHADER_glProgram*) * program_count);
+        if (retval->programs == NULL)
+            goto compile_shader_fail;
+
+        // NOTE: sort of weird that the tech->pass doesn't index the shader list...
+        // Collect shaders
+        for (tech_index = 0; tech_index < retval->technique_count; tech_index++)
+        {
+            for (pass_index = 0; pass_index < retval->techniques[tech_index].pass_count; pass_index++)
+            {
+                for (shader_index = 0; shader_index < retval->shader_count; shader_index++)
+                {
+                    if (pd->shaders[shader_index].technique == tech_index
+                        && pd->shaders[shader_index].pass == pass_index)
+                    {
+                        if (pd->shaders[shader_index].shader->shader_type == MOJOSHADER_TYPE_VERTEX)
+                            retval->techniques[tech_index].passes[pass_index].vs_index = shader_index;
+                        else if (pd->shaders[shader_index].shader->shader_type == MOJOSHADER_TYPE_PIXEL)
+                            retval->techniques[tech_index].passes[pass_index].ps_index = shader_index;
+                        else // NOTE: other shader types not supported.
+                            goto compile_shader_fail;
+                    }
+                }
+            }
+        }
+
+        // Link all the programs we can.
+        for (tech_index = 0; tech_index < retval->technique_count; tech_index++)
+        {
+            for (pass_index = 0; pass_index < retval->techniques[tech_index].pass_count; pass_index++)
+            {
+                assert(retval->techniques[tech_index].passes[pass_index].vs_index >= 0
+                    && retval->techniques[tech_index].passes[pass_index].vs_index < retval->shader_count
+                    && retval->techniques[tech_index].passes[pass_index].ps_index >= 0
+                    && retval->techniques[tech_index].passes[pass_index].ps_index < retval->shader_count);
+
+                retval->techniques[tech_index].passes[pass_index].program_index = retval->program_count;
+                retval->programs[retval->program_count] =
+                    MOJOSHADER_glLinkProgram(retval->shaders[retval->techniques[tech_index].passes[pass_index].vs_index],
+                                             retval->shaders[retval->techniques[tech_index].passes[pass_index].ps_index]);
+
+                if (retval->programs[retval->program_count] == NULL)
+                    goto compile_shader_fail;
+                retval->program_count++;
+                assert(retval->program_count <= program_count);
+            }
+        }
+    }
+
+    // Reserve memory for the value cache.
+    {
+        uint32 param_index = 0;
+        uint32 shader_index = 0;
+        MOJOSHADER_effectParam *param = NULL;
+        MOJOSHADER_symbol *symbol = NULL;
+        const MOJOSHADER_parseData *shader_data = NULL;
+        glEffectParam *effect_param = NULL;
+        uint32 symbolidx = 0;
+
+        retval->param_count = pd->param_count;
+        retval->param_cache = (glEffectParam *) Malloc(sizeof (glEffectParam) * retval->param_count);
+        if (retval->param_cache == NULL)
+            goto compile_shader_fail;
+        memset(retval->param_cache, '\0', sizeof (glEffectParam) * retval->param_count);
+
+        for (param_index = 0; param_index < retval->param_count; ++param_index)
+		{
+            param = &(pd->params[param_index]);
+            effect_param = &(retval->param_cache[param_index]);
+
+            // need to find a matching symbol in a shader to figure out size.
+            symbol = NULL;
+            for (shader_index = 0; shader_index < retval->shader_count && symbol == NULL; ++shader_index)
+			{
+                shader_data = pd->shaders[shader_index].shader;
+
+                if (shader_data->preshader)
+                {
+                    for (symbolidx = 0;
+                        symbolidx < shader_data->preshader->symbol_count;
+                        ++symbolidx)
+                    {
+                        symbol = &(shader_data->preshader->symbols[symbolidx]);
+                        if (strcmp(param->name, symbol->name) == 0)
+                        {
+                            break;
+                        }
+                        symbol = NULL;
+                    }
+                }
+            }
+
+            for (shader_index = 0; shader_index < retval->shader_count && symbol == NULL; ++shader_index)
+            {
+                shader_data = pd->shaders[shader_index].shader;
+				for (symbolidx = 0; (int)symbolidx < shader_data->symbol_count; ++symbolidx)
+				{
+                    symbol = &(shader_data->symbols[symbolidx]);
+					if (strcmp(param->name, symbol->name) == 0)
+					{
+						break;
+					}
+                    symbol = NULL;
+				}
+			}
+
+			// this means the param isn't actually referenced by any shaders.
+			if (symbol == NULL)
+				continue;
+
+            effect_param->data_size = symbol->register_count * 16;
+            effect_param->data = Malloc(effect_param->data_size);
+            if (effect_param->data == NULL)
+                goto compile_shader_fail;
+
+            memset(effect_param->data, '\0', effect_param->data_size);
+
+            // collect symbol references for fast uniform setting later.
+            effect_param->shader_symbol_count = pd->shader_count;
+            effect_param->shader_symbols = (MOJOSHADER_symbol**) Malloc(sizeof (MOJOSHADER_symbol*) * effect_param->shader_symbol_count);
+            if (effect_param->shader_symbols == NULL)
+                goto compile_shader_fail;
+
+            memset(effect_param->shader_symbols, '\0', sizeof(MOJOSHADER_symbol*) * effect_param->shader_symbol_count);
+
+            effect_param->preshader_symbols = (MOJOSHADER_symbol**) Malloc(sizeof (MOJOSHADER_symbol*) * effect_param->shader_symbol_count);
+            if (effect_param->preshader_symbols == NULL)
+                goto compile_shader_fail;
+
+            memset(effect_param->preshader_symbols, '\0', sizeof(MOJOSHADER_symbol*) * effect_param->shader_symbol_count);
+
+            for (shader_index = 0; shader_index < retval->shader_count; ++shader_index)
+            {
+                shader_data = pd->shaders[shader_index].shader;
+
+                if (shader_data->preshader)
+                {
+                    for (symbolidx = 0;
+                        symbolidx < shader_data->preshader->symbol_count;
+                        ++symbolidx)
+                    {
+                        symbol = &(shader_data->preshader->symbols[symbolidx]);
+                        if (strcmp(param->name, symbol->name) == 0)
+                        {
+                            effect_param->preshader_symbols[shader_index] = symbol;
+                            break;
+                        }
+                    }
+                }
+
+                for (symbolidx = 0; symbolidx < (uint32)shader_data->symbol_count; ++symbolidx)
+                {
+                    symbol = &(shader_data->symbols[symbolidx]);
+                    if (strcmp(param->name, symbol->name) == 0)
+                    {
+                        effect_param->shader_symbols[shader_index] = symbol;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    retval->effect = pd;
+    retval->refcount = 1;
+    retval->bound_technique_index = 0;
+    return retval;
+
+compile_shader_fail:
+    if (shader != 0)
+        ctx->profileDeleteShader(shader);
+    if (retval != NULL)
+        MOJOSHADER_glDeleteEffect(retval);
+    MOJOSHADER_freeEffect(pd);
+    return NULL;
+}
+
+
+const MOJOSHADER_effect *MOJOSHADER_glGetEffectParseData(MOJOSHADER_glEffect *effect)
+{
+    return effect->effect;
+}
+
+void MOJOSHADER_glSetEffectValue(MOJOSHADER_glEffect *effect, int idx,
+                                 void *data, unsigned int bytes)
+{
+    glEffectParam *param = NULL;
+
+    assert(effect);
+    assert(idx >=0 && idx < (int)effect->param_count);
+
+    param = &(effect->param_cache[idx]);
+
+    if (param->data != NULL)
+    {
+        assert(data);
+        assert(bytes > 0 && bytes <= param->data_size);
+
+        memcpy(param->data, data, bytes);
+        param->isset = 1;
+    }
+
+    // TODO: return whether the param could be set perhaps?
+}
+
+int MOJOSHADER_glGetEffectParameterBySemantic(MOJOSHADER_glEffect *effect,
+                                              const char *name)
+{
+    int retval = -1;
+    uint32 i = 0;
+    assert(effect);
+    assert(name);
+
+    for (; i < (uint32)effect->effect->param_count; i++)
+    {
+        if (strcmp(effect->effect->params[i].semantic, name) == 0)
+        {
+            retval = i;
+            break;
+        }
+    }
+    
+    return retval;
+}
+
+void MOJOSHADER_glEffectBegin(MOJOSHADER_glEffect *effect, unsigned int *pass_count)
+{
+    assert(effect);
+    assert(pass_count);
+
+    assert(effect->techniques && effect->bound_technique_index < effect->technique_count);
+    *pass_count = effect->techniques[effect->bound_technique_index].pass_count;
+
+    // TODO: maybe some other context prep or something.
+}
+
+static const GLenum blend_map[] =
+{
+    -1,
+    GL_ZERO, // D3DBLEND_ZERO
+    GL_ONE, // D3DBLEND_ONE
+    GL_SRC_COLOR, // D3DBLEND_SRCCOLOR
+    GL_ONE_MINUS_SRC_COLOR, // D3DBLEND_INVSRCCOLOR
+    GL_SRC_ALPHA, // D3DBLEND_SRCALPHA
+    GL_ONE_MINUS_SRC_ALPHA, // D3DBLEND_INVSRCALPHA
+    GL_DST_ALPHA, // D3DBLEND_DESTALPHA
+    GL_ONE_MINUS_DST_ALPHA, // D3DBLEND_INVDESTALPHA
+    GL_DST_COLOR, // D3DBLEND_DESTCOLOR
+    GL_ONE_MINUS_DST_COLOR, // D3DBLEND_INVDESTCOLOR
+    GL_SRC_ALPHA_SATURATE // D3DBLEND_SRCALPHASAT
+};
+
+static const GLenum cmpfunc_map[] =
+{
+    -1,
+    GL_NEVER, // D3DCMP_NEVER
+    GL_LESS, // D3DCMP_LESS
+    GL_EQUAL, // D3DCMP_EQUAL
+    GL_LEQUAL, // D3DCMP_LESSEQUAL
+    GL_GREATER, // D3DCMP_GREATER
+    GL_NOTEQUAL, // D3DCMP_NOTEQUAL
+    GL_GEQUAL, // D3DCMP_GREATEREQUAL
+    GL_ALWAYS
+};
+
+static const GLenum func_map[] =
+{
+    -1,
+    GL_FUNC_ADD, // D3DBLENDOP_ADD
+    GL_FUNC_SUBTRACT, // D3DBLENDOP_SUBTRACT
+    GL_FUNC_REVERSE_SUBTRACT, // D3DBLENDOP_REVSUBTRACT
+    GL_MIN, // D3DBLENDOP_MIN
+    GL_MAX, // D3DBLENDOP_MAX
+};
+
+static const GLenum fill_map[] =
+{
+    -1,
+    GL_POINT, // D3DFILL_POINT
+    GL_LINE, // D3DFILL_WIREFRAME
+    GL_FILL // D3DFILL_SOLID
+};
+
+static const GLenum cullmode_map[] =
+{
+    -1,
+    GL_CCW, // D3DCULL_NONE
+    GL_CCW, // D3DCULL_CW
+    GL_CW // D3DCULL_CCW
+};
+
+#define D3DCOLORWRITEENABLE_RED     (1L<<0)
+#define D3DCOLORWRITEENABLE_GREEN   (1L<<1)
+#define D3DCOLORWRITEENABLE_BLUE    (1L<<2)
+#define D3DCOLORWRITEENABLE_ALPHA   (1L<<3)
+
+void MOJOSHADER_glEffectBeginPass(MOJOSHADER_glEffect *effect, unsigned int pass_index)
+{
+    MOJOSHADER_glPass *pass = NULL;
+
+    if (effect == ctx->bound_effect)
+        return;  // nothing to do.
+
+    if (effect != NULL)
+        effect->refcount++;
+
+    effect_unref(ctx->bound_effect);
+    ctx->bound_effect = effect;
+
+    assert(effect->techniques && effect->bound_technique_index < effect->technique_count);
+    assert(pass_index < effect->techniques[effect->bound_technique_index].pass_count);
+    assert(effect->techniques[effect->bound_technique_index].passes);
+
+    pass = &(effect->techniques[effect->bound_technique_index].passes[pass_index]);
+
+    // bind the program for this effect pass
+    {
+        uint32 program_index = pass->program_index;
+        assert(program_index < effect->program_count);
+        MOJOSHADER_glBindProgram(effect->programs[program_index]);
+    }
+
+    effect->bound_pass_index = pass_index;
+
+    { // apply render state for pass
+        // TODO: register all gl functions with ctx
+        MOJOSHADER_effectPass *effectpass = &effect->effect->techniques[effect->bound_technique_index].passes[effect->bound_pass_index];
+        MOJOSHADER_stateType state_type;
+
+        // default state.
+        unsigned int state_value;
+        int enable_blend = 0;
+        int enable_seperate_blend = 0;
+        GLenum src_blend = GL_ONE;
+        GLenum dest_blend = GL_ZERO;
+        GLenum src_alpha_blend = GL_ONE;
+        GLenum dest_alpha_blend = GL_ZERO;
+        GLenum blend_op = GL_FUNC_ADD;
+        int enable_alpha_test = 0;
+        GLenum alpha_cmp = GL_GREATER;
+        GLclampf alpha_ref = 0.0f;
+        int enable_depth_test = 0;
+        GLenum depth_func = GL_LESS;
+        GLboolean depth_mask = GL_TRUE;
+        GLenum polygon_fill = GL_FILL;
+        int enable_poly_cull = 0;
+        GLenum front_face = GL_CCW;
+        int enable_point_sprite = 0;
+        GLboolean color_mask_r = GL_TRUE;
+        GLboolean color_mask_g = GL_TRUE;
+        GLboolean color_mask_b = GL_TRUE;
+        GLboolean color_mask_a = GL_TRUE;
+
+        for (unsigned int i = 0; i < effectpass->state_count; ++i)
+        {
+            state_type = effectpass->states[i].type;
+            state_value = effectpass->states[i].value;
+
+            if (state_type == MOJOSHADER_STATE_ZENABLE)
+                enable_depth_test = state_value;
+            else if (state_type == MOJOSHADER_STATE_FILLMODE)
+                polygon_fill = fill_map[state_value];
+            else if (state_type == MOJOSHADER_STATE_SHADEMODE)
+                assert(0); // TODO:
+            else if (state_type == MOJOSHADER_STATE_ZWRITEENABLE)
+                depth_mask = state_value;
+            else if (state_type == MOJOSHADER_STATE_ALPHATESTENABLE)
+                enable_alpha_test = state_value;
+            else if (state_type == MOJOSHADER_STATE_LASTPIXEL)
+                assert(0); // TODO:
+            else if (state_type == MOJOSHADER_STATE_SRCBLEND)
+                src_blend = blend_map[state_value];
+            else if (state_type == MOJOSHADER_STATE_DESTBLEND)
+                dest_blend = blend_map[state_value];
+            else if (state_type == MOJOSHADER_STATE_CULLMODE)
+            {
+                if (state_value == 1) // D3DCULL_NONE
+                {
+                    enable_poly_cull = 0;
+                }
+                else
+                {
+                    enable_poly_cull = 1;
+                    front_face = cullmode_map[state_value];
+                }
+            }
+            else if (state_type == MOJOSHADER_STATE_ZFUNC)
+                depth_func = cmpfunc_map[state_value];
+            else if (state_type == MOJOSHADER_STATE_ALPHAREF)
+                alpha_ref = state_value / 255.0f;
+            else if (state_type == MOJOSHADER_STATE_ALPHAFUNC)
+                alpha_cmp = cmpfunc_map[state_value];
+            else if (state_type == MOJOSHADER_STATE_DITHERENABLE)
+                assert(0); // TODO:
+            else if (state_type == MOJOSHADER_STATE_ALPHABLENDENABLE)
+                enable_blend = state_value;
+            else if (state_type == MOJOSHADER_STATE_POINTSPRITEENABLE)
+                enable_point_sprite = state_value;
+            else if (state_type == MOJOSHADER_STATE_COLORWRITEENABLE)
+            {
+                color_mask_r = (state_value & D3DCOLORWRITEENABLE_RED) != 0 ? 1 : 0;
+                color_mask_g = (state_value & D3DCOLORWRITEENABLE_GREEN) != 0 ? 1 : 0;
+                color_mask_b = (state_value & D3DCOLORWRITEENABLE_BLUE) != 0 ? 1 : 0;
+                color_mask_a = (state_value & D3DCOLORWRITEENABLE_ALPHA) != 0 ? 1 : 0;
+            }
+            else if (state_type == MOJOSHADER_STATE_TWEENFACTOR)
+                assert(0); // TODO:
+            else if (state_type == MOJOSHADER_STATE_BLENDOP)
+                blend_op = func_map[state_value];
+            else if (state_type == MOJOSHADER_STATE_SEPERATEALPHABLENDENABLE)
+                enable_seperate_blend = state_value;
+            else if (state_type == MOJOSHADER_STATE_SRCBLENDALPHA)
+                src_alpha_blend = blend_map[state_value];
+            else if (state_type == MOJOSHADER_STATE_DESTBLENDALPHA)
+                dest_alpha_blend = blend_map[state_value];
+        }
+
+        // raster state state.
+        toggle_gl_state(GL_DEPTH_TEST, enable_depth_test);
+        glDepthFunc(depth_func);
+        glDepthMask(depth_mask);
+        glColorMask(color_mask_r, color_mask_g, color_mask_b, color_mask_a);
+        glPolygonMode(GL_FRONT_AND_BACK, polygon_fill);
+
+        // cull state.
+        toggle_gl_state(GL_CULL_FACE, enable_poly_cull);
+        glFrontFace(front_face);
+
+        // blend state.
+        toggle_gl_state(GL_BLEND, enable_blend | enable_seperate_blend);
+        if (enable_seperate_blend == 0) // make alpha blends match if seperate isn't enabled.
+        {
+            src_alpha_blend = src_blend;
+            dest_alpha_blend = dest_blend;
+        }
+        ctx->glBlendFuncSeparate(src_blend, dest_blend, src_alpha_blend, dest_alpha_blend);
+        ctx->glBlendEquation(blend_op);
+
+        // alpha test state.
+        toggle_gl_state(GL_ALPHA_TEST, enable_alpha_test);
+        glAlphaFunc(alpha_cmp, alpha_ref);
+
+        // Misc. state.
+        toggle_gl_state(GL_POINT_SPRITE, enable_point_sprite);
+    }
+}
+
+void MOJOSHADER_glEffectEndPass(MOJOSHADER_glEffect *effect)
+{
+    effect->bound_pass_index = 0;
+    
+    MOJOSHADER_glBindProgram(NULL);
+
+    assert(effect == ctx->bound_effect);
+
+    effect_unref(ctx->bound_effect);
+    ctx->bound_effect = NULL;
+}
+
+void MOJOSHADER_glEffectEnd(MOJOSHADER_glEffect *effect)
+{
+    // TODO: maybe something?
+}
+
+void MOJOSHADER_glDeleteEffect(MOJOSHADER_glEffect *effect)
+{
+    effect_unref(effect);
+}
 
 
 void MOJOSHADER_glSetVertexPreshaderUniformF(unsigned int idx,
@@ -2395,6 +3055,61 @@ void MOJOSHADER_glGetPixelPreshaderUniformF(unsigned int idx, float *data,
 } // MOJOSHADER_glGetPixelPreshaderUniformF
 
 
+void MOJOSHADER_glInvalidateRenderState()
+{
+    // default state.
+    int enable_blend = 0;
+    int enable_seperate_blend = 0;
+    GLenum src_blend = GL_ONE;
+    GLenum dest_blend = GL_ZERO;
+    GLenum src_alpha_blend = GL_ONE;
+    GLenum dest_alpha_blend = GL_ZERO;
+    GLenum blend_op = GL_FUNC_ADD;
+    int enable_alpha_test = 0;
+    GLenum alpha_cmp = GL_GREATER;
+    GLclampf alpha_ref = 0.0f;
+    int enable_depth_test = 0;
+    GLenum depth_func = GL_LESS;
+    GLboolean depth_mask = GL_TRUE;
+    GLenum polygon_fill = GL_FILL;
+    int enable_poly_cull = 0;
+    GLenum front_face = GL_CCW;
+    int enable_point_sprite = 0;
+    GLboolean color_mask_r = GL_TRUE;
+    GLboolean color_mask_g = GL_TRUE;
+    GLboolean color_mask_b = GL_TRUE;
+    GLboolean color_mask_a = GL_TRUE;
+
+    // raster state state.
+    toggle_gl_state(GL_DEPTH_TEST, enable_depth_test);
+    glDepthFunc(depth_func);
+    glDepthMask(depth_mask);
+    glColorMask(color_mask_r, color_mask_g, color_mask_b, color_mask_a);
+    glPolygonMode(GL_FRONT_AND_BACK, polygon_fill);
+
+    // cull state.
+    toggle_gl_state(GL_CULL_FACE, enable_poly_cull);
+    glFrontFace(front_face);
+
+    // blend state.
+    toggle_gl_state(GL_BLEND, enable_blend | enable_seperate_blend);
+    if (enable_seperate_blend == 0) // reset alpha blends if it is not enabled.
+    {
+        src_alpha_blend = GL_ONE;
+        dest_alpha_blend = GL_ZERO;
+    }
+    ctx->glBlendFuncSeparate(src_blend, dest_blend, src_alpha_blend, dest_alpha_blend);
+    ctx->glBlendEquation(blend_op);
+
+    // alpha test state.
+    toggle_gl_state(GL_ALPHA_TEST, enable_alpha_test);
+    glAlphaFunc(alpha_cmp, alpha_ref);
+
+    // Misc. state.
+    toggle_gl_state(GL_POINT_SPRITE, enable_point_sprite);
+}
+
+
 void MOJOSHADER_glSetLegacyBumpMapEnv(unsigned int sampler, float mat00,
                                       float mat01, float mat10, float mat11,
                                       float lscale, float loffset)
@@ -2412,13 +3127,177 @@ void MOJOSHADER_glSetLegacyBumpMapEnv(unsigned int sampler, float mat00,
     ctx->generation++;
 } // MOJOSHADER_glSetLegacyBumpMapEnv
 
+static const GLint wrap_map[] =
+{
+    GL_REPEAT,
+    GL_REPEAT,
+    GL_MIRRORED_REPEAT,
+    GL_CLAMP_TO_EDGE
+};
+
+static const GLint mag_filter_map[] =
+{
+    GL_NEAREST,
+    GL_NEAREST,
+    GL_LINEAR
+};
+
+static const GLint min_mip_filter_map[3][3] =
+{
+    {GL_NEAREST, GL_NEAREST_MIPMAP_NEAREST, GL_NEAREST_MIPMAP_LINEAR},
+    {GL_NEAREST, GL_NEAREST_MIPMAP_NEAREST, GL_NEAREST_MIPMAP_LINEAR},
+    {GL_LINEAR, GL_LINEAR_MIPMAP_NEAREST, GL_LINEAR_MIPMAP_LINEAR}
+};
 
 void MOJOSHADER_glProgramReady(void)
 {
     MOJOSHADER_glProgram *program = ctx->bound_program;
+    MOJOSHADER_glEffect *effect = ctx->bound_effect;
 
     if (program == NULL)
         return;  // nothing to do.
+
+    // If we have an effect bound apply the current param cache to this program's context.
+    if (effect)
+    {
+        MOJOSHADER_glPass *pass = NULL;
+        glEffectParam *param = NULL;
+        MOJOSHADER_symbol *symbol = NULL;
+        uint32 param_index = 0;
+        int shader_index = 0;
+        int i, j;
+        MOJOSHADER_glTechnique * technique = &effect->techniques[effect->bound_technique_index];
+        void (*set_shader_uniform_b)(unsigned int, const int *, unsigned int);
+        void (*set_shader_uniform_i)(unsigned int, const int *, unsigned int);
+        void (*set_shader_uniform_f)(unsigned int, const float *, unsigned int);
+        void (*set_preshader_uniform_f)(unsigned int, const float *, unsigned int);
+        void *paramdata = NULL;
+
+        assert(effect->techniques && effect->bound_technique_index < effect->technique_count);
+        assert(effect->bound_pass_index < technique->pass_count);
+        assert(technique->passes);
+
+        pass = &(technique->passes[effect->bound_pass_index]);
+
+        for (; param_index < effect->param_count; param_index++)
+        {
+            param = &(effect->param_cache[param_index]);
+            if (param->data == NULL)
+            {
+                continue;
+            }
+
+            for(i = 0; i < 2; ++i)
+            {
+                shader_index = i == 0 ? pass->vs_index : pass->ps_index;
+                set_shader_uniform_b = i == 0 ? MOJOSHADER_glSetVertexShaderUniformB : MOJOSHADER_glSetPixelShaderUniformB;
+                set_shader_uniform_i = i == 0 ? MOJOSHADER_glSetVertexShaderUniformI : MOJOSHADER_glSetPixelShaderUniformI;
+                set_shader_uniform_f = i == 0 ? MOJOSHADER_glSetVertexShaderUniformF : MOJOSHADER_glSetPixelShaderUniformF;
+                set_preshader_uniform_f = i == 0 ? MOJOSHADER_glSetVertexPreshaderUniformF : MOJOSHADER_glSetPixelPreshaderUniformF;
+                paramdata = effect->effect->params[param_index].values;
+                if (param->isset || paramdata == NULL)
+                {
+                    paramdata = param->data;
+                }
+
+                symbol = param->shader_symbols[shader_index];
+                if (symbol != NULL)
+                {
+                    assert(symbol->register_count <= param->data_size / 16);
+                    if (symbol->register_set == MOJOSHADER_SYMREGSET_BOOL)
+                    {
+                        set_shader_uniform_b(symbol->register_index,
+                            (const int *)paramdata, symbol->register_count );
+                    }
+                    else if (symbol->register_set == MOJOSHADER_SYMREGSET_INT4)
+                    {
+                        set_shader_uniform_i(symbol->register_index,
+                            (const int *)paramdata, symbol->register_count );
+                    }
+                    else if (symbol->register_set == MOJOSHADER_SYMREGSET_FLOAT4)
+                    {
+                        set_shader_uniform_f(symbol->register_index,
+                            (const float *)paramdata, symbol->register_count );
+                    }
+                    else if (symbol->register_set == MOJOSHADER_SYMREGSET_SAMPLER)
+                    {
+                        MOJOSHADER_effectParam *effectparam = &effect->effect->params[param_index];
+                        MOJOSHADER_samplerAddressType addressu = MOJOSHADER_SAMPLER_ADDRESS_0;
+                        MOJOSHADER_samplerAddressType addressv = MOJOSHADER_SAMPLER_ADDRESS_0;
+                        MOJOSHADER_samplerFilterType magfilter = MOJOSHADER_SAMPLER_FILTER_0;
+                        MOJOSHADER_samplerFilterType minfilter = MOJOSHADER_SAMPLER_FILTER_0;
+                        MOJOSHADER_samplerFilterType mipfilter = MOJOSHADER_SAMPLER_FILTER_0;
+                        GLfloat lodbias = 0.0f;
+
+                        // TODO: confirm this.
+                        // TODO: take MOJOSHADER_symbolType into account for texture target.
+                        ctx->glActiveTexture(GL_TEXTURE0+symbol->register_index);
+                        glBindTexture(GL_TEXTURE_2D, *( (GLuint*)paramdata) );
+
+                        // Apply the sample state.
+                        for (j = 0; j < (int)effectparam->sampler_state_count; ++j)
+                        {
+                            const MOJOSHADER_effectSamplerState *state = &effectparam->sampler_states[j];
+                            if (state->type == MOJOSHADER_SAMPLER_STATE_ADDRESSU)
+                            {
+                                addressu = (MOJOSHADER_samplerAddressType)state->value;
+                            }
+                            else if (state->type == MOJOSHADER_SAMPLER_STATE_ADDRESSV)
+                            {
+                                addressv = (MOJOSHADER_samplerAddressType)state->value;
+                            }
+                            else if (state->type == MOJOSHADER_SAMPLER_STATE_ADDRESSW)
+                            {
+                                assert(0); // TODO:
+                            }
+                            else if (state->type == MOJOSHADER_SAMPLER_STATE_BORDER)
+                            {
+                                assert(0); // TODO:
+                            }
+                            else if (state->type == MOJOSHADER_SAMPLER_STATE_MAGFILTER)
+                            {
+                                magfilter = (MOJOSHADER_samplerFilterType)state->value;
+                            }
+                            else if (state->type == MOJOSHADER_SAMPLER_STATE_MINFILTER)
+                            {
+                                minfilter = (MOJOSHADER_samplerFilterType)state->value;
+                            }
+                            else if (state->type == MOJOSHADER_SAMPLER_STATE_MIPFILTER)
+                            {
+                                mipfilter = (MOJOSHADER_samplerFilterType)state->value;
+                            }
+                            else if (state->type == MOJOSHADER_SAMPLER_STATE_MIPMAPLODBIAS)
+                            {
+                                lodbias = state->value_float;
+                            }
+                        }
+
+                        // TODO: use symbols in ctx.
+                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap_map[addressu]);
+                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap_map[addressv]);
+                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, mag_filter_map[magfilter]);
+                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, min_mip_filter_map[minfilter][mipfilter]);
+                        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_LOD_BIAS, lodbias);
+                    }
+                }
+
+                symbol = param->preshader_symbols[shader_index];
+                if (symbol != NULL)
+                {
+                    assert(symbol->register_count <= param->data_size / 16);
+                    if (symbol->register_set == MOJOSHADER_SYMREGSET_FLOAT4)
+                    {
+                        set_preshader_uniform_f(symbol->register_index,
+                            (const float *)paramdata, symbol->register_count );
+                    }
+                    else
+                    {
+                        assert(0);
+                    }
+                }
+            }
+        }
+    }
 
     // Toggle vertex attribute arrays on/off, based on our needs.
     update_enabled_arrays();
@@ -2552,7 +3431,7 @@ void MOJOSHADER_glProgramReady(void)
                      (program->texbem_count * 8);
 
             assert(program->texbem_count <= MAX_TEXBEMS);
-            for (i = 0; i < samp_count; i++)
+            for (i = 0; (int)i < samp_count; i++)
             {
                 if (samps[i].texbem)
                 {

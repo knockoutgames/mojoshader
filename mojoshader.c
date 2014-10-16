@@ -8009,7 +8009,7 @@ static int parse_ctab_typeinfo(Context *ctx, const uint8 *start,
 
     int i;
     const uint32 *member = (const uint32 *)((const uint8 *) (&typeptr[6]));
-    for (i = 0; i < info->member_count; i++)
+    for (i = 0; i < (int)info->member_count; i++)
     {
         MOJOSHADER_symbolStructMember *mbr = &info->members[i];
         const uint32 name = SWAP32(member[0]);
@@ -8074,7 +8074,7 @@ static void parse_constant_table(Context *ctx, const uint32 *tokens,
     // !!! FIXME: check that (start+target) points to "ps_3_0", etc.
 
     ctab->symbol_count = constants;
-    ctab->symbols = Malloc(ctx, sizeof (MOJOSHADER_symbol) * constants);
+    ctab->symbols = (MOJOSHADER_symbol*)Malloc(ctx, sizeof (MOJOSHADER_symbol) * constants);
     if (ctab->symbols == NULL)
         return;
     memset(ctab->symbols, '\0', sizeof (MOJOSHADER_symbol) * constants);
@@ -8293,7 +8293,7 @@ static void parse_preshader(Context *ctx, uint32 tokcount)
                 return;  // oh well.
             const double *litptr = (const double *) (clit.tokens + 2);
             int i;
-            for (i = 0; i < lit_count; i++)
+            for (i = 0; i < (int)lit_count; i++)
                 preshader->literals[i] = SWAPDBL(litptr[i]);
         } // else if
     } // else
@@ -8425,7 +8425,7 @@ static void parse_preshader(Context *ctx, uint32 tokcount)
             {
                 case 1:  // literal from CLIT block.
                 {
-                    if (item >= preshader->literal_count)
+                    if ( (item + inst->element_count) >= preshader->literal_count)
                     {
                         fail(ctx, "Bogus preshader literal index.");
                         break;
@@ -8443,7 +8443,7 @@ static void parse_preshader(Context *ctx, uint32 tokcount)
                         const uint32 base = sym->register_index * 4;
                         const uint32 count = sym->register_count * 4;
                         assert(sym->register_set==MOJOSHADER_SYMREGSET_FLOAT4);
-                        if ( (base <= item) && ((base + count) > item) )
+                        if ( (base <= item) && ((base + count) >= (item + inst->element_count) ) )
                             break;
                     } // for
                     if (i == ctabdata.symbol_count)
@@ -8458,11 +8458,11 @@ static void parse_preshader(Context *ctx, uint32 tokcount)
                 case 4:
                 {
                     int i;
-                    for (i = 0; i < output_map_count; i++)
+                    for (i = 0; i < (int)output_map_count; i++)
                     {
                         const uint32 base = output_map[(i*2)] * 4;
                         const uint32 count = output_map[(i*2)+1] * 4;
-                        if ( (base <= item) && ((base + count) > item) )
+                        if ( (base <= item) && ((base + count) >= (item + inst->element_count) ) )
                             break;
                     } // for
                     if (i == output_map_count)
@@ -8479,7 +8479,7 @@ static void parse_preshader(Context *ctx, uint32 tokcount)
                 {
                     operand->type = MOJOSHADER_PRESHADEROPERAND_TEMP;
                     if (item >= preshader->temp_count)
-                        preshader->temp_count = item + 1;
+                        preshader->temp_count = item + inst->element_count;
                     break;
                 } // case
             } // switch
@@ -8690,7 +8690,7 @@ static void free_sym_typeinfo(MOJOSHADER_free f, void *d,
                               MOJOSHADER_symbolTypeInfo *typeinfo)
 {
     int i;
-    for (i = 0; i < typeinfo->member_count; i++)
+    for (i = 0; i < (int)typeinfo->member_count; i++)
     {
         f((void *) typeinfo->members[i].name, d);
         free_sym_typeinfo(f, d, &typeinfo->members[i].info);

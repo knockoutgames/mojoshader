@@ -752,15 +752,176 @@ void MOJOSHADER_freeParseData(const MOJOSHADER_parseData *data);
 
 /* Effects interface... */  /* !!! FIXME: THIS API IS NOT STABLE YET! */
 
+typedef enum MOJOSHADER_stateType
+{
+    MOJOSHADER_STATE_ZENABLE,
+    MOJOSHADER_STATE_FILLMODE,
+    MOJOSHADER_STATE_SHADEMODE,
+    MOJOSHADER_STATE_ZWRITEENABLE,
+    MOJOSHADER_STATE_ALPHATESTENABLE,
+    MOJOSHADER_STATE_LASTPIXEL,
+    MOJOSHADER_STATE_SRCBLEND,
+    MOJOSHADER_STATE_DESTBLEND,
+    MOJOSHADER_STATE_CULLMODE,
+    MOJOSHADER_STATE_ZFUNC,
+    MOJOSHADER_STATE_ALPHAREF,
+    MOJOSHADER_STATE_ALPHAFUNC,
+    MOJOSHADER_STATE_DITHERENABLE,
+    MOJOSHADER_STATE_ALPHABLENDENABLE,
+    MOJOSHADER_STATE_14,
+    MOJOSHADER_STATE_15,
+    MOJOSHADER_STATE_16,
+    MOJOSHADER_STATE_17,
+    MOJOSHADER_STATE_18,
+    MOJOSHADER_STATE_19,
+    MOJOSHADER_STATE_20,
+    MOJOSHADER_STATE_21,
+    MOJOSHADER_STATE_22,
+    MOJOSHADER_STATE_23,
+    MOJOSHADER_STATE_24,
+    MOJOSHADER_STATE_25,
+    MOJOSHADER_STATE_26,
+    MOJOSHADER_STATE_27,
+    MOJOSHADER_STATE_28,
+    MOJOSHADER_STATE_29,
+    MOJOSHADER_STATE_30,
+    MOJOSHADER_STATE_31,
+    MOJOSHADER_STATE_32,
+    MOJOSHADER_STATE_33,
+    MOJOSHADER_STATE_34,
+    MOJOSHADER_STATE_35,
+    MOJOSHADER_STATE_36,
+    MOJOSHADER_STATE_37,
+    MOJOSHADER_STATE_38,
+    MOJOSHADER_STATE_39,
+    MOJOSHADER_STATE_40,
+    MOJOSHADER_STATE_41,
+    MOJOSHADER_STATE_42,
+    MOJOSHADER_STATE_43,
+    MOJOSHADER_STATE_44,
+    MOJOSHADER_STATE_45,
+    MOJOSHADER_STATE_46,
+    MOJOSHADER_STATE_47,
+    MOJOSHADER_STATE_48,
+    MOJOSHADER_STATE_49,
+    MOJOSHADER_STATE_50,
+    MOJOSHADER_STATE_51,
+    MOJOSHADER_STATE_52,
+    MOJOSHADER_STATE_53,
+    MOJOSHADER_STATE_54,
+    MOJOSHADER_STATE_55,
+    MOJOSHADER_STATE_56,
+    MOJOSHADER_STATE_57,
+    MOJOSHADER_STATE_58,
+    MOJOSHADER_STATE_59,
+    MOJOSHADER_STATE_60,
+    MOJOSHADER_STATE_61,
+    MOJOSHADER_STATE_62,
+    MOJOSHADER_STATE_POINTSPRITEENABLE,
+    MOJOSHADER_STATE_64,
+    MOJOSHADER_STATE_65,
+    MOJOSHADER_STATE_66,
+    MOJOSHADER_STATE_67,
+    MOJOSHADER_STATE_68,
+    MOJOSHADER_STATE_69,
+    MOJOSHADER_STATE_70,
+    MOJOSHADER_STATE_71,
+    MOJOSHADER_STATE_72,
+    MOJOSHADER_STATE_COLORWRITEENABLE,
+    MOJOSHADER_STATE_TWEENFACTOR,
+    MOJOSHADER_STATE_BLENDOP,
+    MOJOSHADER_STATE_76,
+    MOJOSHADER_STATE_77,
+    MOJOSHADER_STATE_78,
+    MOJOSHADER_STATE_79,
+    MOJOSHADER_STATE_80,
+    MOJOSHADER_STATE_81,
+    MOJOSHADER_STATE_82,
+    MOJOSHADER_STATE_83,
+    MOJOSHADER_STATE_84,
+    MOJOSHADER_STATE_85,
+    MOJOSHADER_STATE_86,
+    MOJOSHADER_STATE_87,
+    MOJOSHADER_STATE_88,
+    MOJOSHADER_STATE_89,
+    MOJOSHADER_STATE_90,
+    MOJOSHADER_STATE_91,
+    MOJOSHADER_STATE_92,
+    MOJOSHADER_STATE_93,
+    MOJOSHADER_STATE_94,
+    MOJOSHADER_STATE_95,
+    MOJOSHADER_STATE_96,
+    MOJOSHADER_STATE_97,
+    MOJOSHADER_STATE_98,
+    MOJOSHADER_STATE_SEPERATEALPHABLENDENABLE,
+    MOJOSHADER_STATE_SRCBLENDALPHA,
+    MOJOSHADER_STATE_DESTBLENDALPHA
+} MOJOSHADER_stateType;
+
+typedef enum MOJOSHADER_samplerStateType
+{
+    MOJOSHADER_SAMPLER_STATE_0,
+    MOJOSHADER_SAMPLER_STATE_1,
+    MOJOSHADER_SAMPLER_STATE_2,
+    MOJOSHADER_SAMPLER_STATE_3,
+    MOJOSHADER_SAMPLER_STATE_TEXTURE,
+    MOJOSHADER_SAMPLER_STATE_ADDRESSU,
+    MOJOSHADER_SAMPLER_STATE_ADDRESSV,
+    MOJOSHADER_SAMPLER_STATE_ADDRESSW,
+    MOJOSHADER_SAMPLER_STATE_BORDER,
+    MOJOSHADER_SAMPLER_STATE_MAGFILTER,
+    MOJOSHADER_SAMPLER_STATE_MINFILTER,
+    MOJOSHADER_SAMPLER_STATE_MIPFILTER,
+    MOJOSHADER_SAMPLER_STATE_MIPMAPLODBIAS
+} MOJOSHADER_samplerStateType;
+
+typedef enum MOJOSHADER_samplerAddressType
+{
+    MOJOSHADER_SAMPLER_ADDRESS_0,
+    MOJOSHADER_SAMPLER_ADDRESS_WRAP,
+    MOJOSHADER_SAMPLER_ADDRESS_MIRROR,
+    MOJOSHADER_SAMPLER_ADDRESS_CLAMP
+} MOJOSHADER_samplerAddressType;
+
+typedef enum MOJOSHADER_samplerFilterType
+{
+    MOJOSHADER_SAMPLER_FILTER_0,
+    MOJOSHADER_SAMPLER_FILTER_POINT,
+    MOJOSHADER_SAMPLER_FILTER_LINEAR
+} MOJOSHADER_samplerFilterType;
+
+typedef struct MOJOSHADER_effectSamplerState
+{
+    MOJOSHADER_samplerStateType type;
+    union
+    {
+        float value_float;
+        unsigned int value;
+    };
+} MOJOSHADER_effectSamplerState;
+
 typedef struct MOJOSHADER_effectParam
 {
     const char *name;
     const char *semantic;
+    // TODO: find a better home for this.
+    union 
+    {
+        unsigned int sampler_state_count; // sampler
+        unsigned int value_size; // bool,int,float
+    };
+    union 
+    {
+        MOJOSHADER_effectSamplerState *sampler_states; // sampler
+        void *values; // bool,int,float
+    };
+
 } MOJOSHADER_effectParam;
 
 typedef struct MOJOSHADER_effectState
 {
-    unsigned int type;
+    MOJOSHADER_stateType type;
+    unsigned int value;
 } MOJOSHADER_effectState;
 
 typedef struct MOJOSHADER_effectPass
@@ -2504,6 +2665,7 @@ typedef void *(*MOJOSHADER_glGetProcAddress)(const char *fnname, void *data);
 typedef struct MOJOSHADER_glContext MOJOSHADER_glContext;
 typedef struct MOJOSHADER_glShader MOJOSHADER_glShader;
 typedef struct MOJOSHADER_glProgram MOJOSHADER_glProgram;
+typedef struct MOJOSHADER_glEffect MOJOSHADER_glEffect;
 
 
 /*
@@ -3145,10 +3307,35 @@ void MOJOSHADER_glSetVertexAttribute(MOJOSHADER_usage usage,
                                      int index, unsigned int size,
                                      MOJOSHADER_attributeType type,
                                      int normalized, unsigned int stride,
-                                     const void *ptr);
+                                     const void *ptr, unsigned int diviser);
 
+// TODO: proper doccing.
+// make sure naming matches style and junk
+MOJOSHADER_glEffect* MOJOSHADER_glCompileEffect(const unsigned char *tokenbuf,
+                                                 const unsigned int bufsize,
+                                                 const MOJOSHADER_swizzle *swiz,
+                                                 const unsigned int swizcount,
+                                                 const MOJOSHADER_samplerMap *smap,
+                                                 const unsigned int smapcount);
 
+const MOJOSHADER_effect *MOJOSHADER_glGetEffectParseData(
+                                                MOJOSHADER_glEffect *effect);
 
+void MOJOSHADER_glSetEffectValue(MOJOSHADER_glEffect *effect, int idx,
+                                 void *data, unsigned int bytes);
+
+int MOJOSHADER_glGetEffectParameterBySemantic(MOJOSHADER_glEffect *effect,
+                                              const char *name);
+
+void MOJOSHADER_glEffectBegin(MOJOSHADER_glEffect *effect, unsigned int *pass_count);
+
+void MOJOSHADER_glEffectBeginPass(MOJOSHADER_glEffect *effect, unsigned int pass_index);
+
+void MOJOSHADER_glEffectEndPass(MOJOSHADER_glEffect *effect);
+
+void MOJOSHADER_glEffectEnd(MOJOSHADER_glEffect *effect);
+
+void MOJOSHADER_glDeleteEffect(MOJOSHADER_glEffect *effect);
 
 /* These below functions are temporary and will be removed from the API once
     the real Effects API is written. Do not use! */
@@ -3164,7 +3351,7 @@ void MOJOSHADER_glGetPixelPreshaderUniformF(unsigned int idx, float *data,
     the real Effects API is written. Do not use! */
 
 
-
+void MOJOSHADER_glInvalidateRenderState();
 
 /*
  * Inform MojoShader that it should commit any pending state to the GL. This
