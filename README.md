@@ -17,6 +17,7 @@ NOTES
 ----------------
 * These are just the source files I touched
   * If you want to utilize these changes first start with https://hg.icculus.org/icculus/mojoshader/
+* This has only been tested with effect files compiled with fx_2_0 profile 
 
 TODO
 ----------------
